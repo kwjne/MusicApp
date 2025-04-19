@@ -1,6 +1,5 @@
 package com.github.kwjne.jetpacktest
 
-import android.media.MediaPlayer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -21,125 +20,65 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
 import com.github.kwjne.jetpacktest.ui.theme.JetpackTestTheme
 import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
-
-    lateinit var mediaPlayer: MediaPlayer
-    val trackList = listOf(R.raw.cupsizeklej, R.raw.bobr, R.raw.deephouse, R.raw.rammsteinengel)
-
+    private lateinit var viewModel: MusicViewModel
     override fun onCreate(savedInstanceState: Bundle?) {
+        viewModel = ViewModelProvider(this,
+            ViewModelProvider.AndroidViewModelFactory.getInstance(application))[MusicViewModel::class.java]
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent { // compose interface
             JetpackTestTheme { // custom theme
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "HUESOS",
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                    Column(modifier = Modifier.padding(innerPadding)){
+                        MyApp(viewModel)
+                    }
                 }
             }
-            MyApp(this, trackList)
         }
-        mediaPlayer = MediaPlayer.create(this, R.raw.cupsizeklej).apply {
-            isLooping = false // можно залупливать трек
-        }
-    }
-
-    fun toggleMusic() {
-        if (!mediaPlayer.isPlaying) {
-            mediaPlayer.start()
-        }
-        else {
-            mediaPlayer.pause()
-        }
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        mediaPlayer.release()
     }
 }
 
 
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+fun MusicControls(viewModel: MusicViewModel) {
+    val isPlaying by viewModel.isPlaying
 
-
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    JetpackTestTheme {
-        Greeting("HUESOS")
-    }
-}
-
-@Composable
-fun MusicControls(activity: MainActivity, trackList: List<Int>) {
-    var currentTrackIndex by remember { mutableIntStateOf(0) }
-    var isPlaying by remember { mutableStateOf(activity.mediaPlayer.isPlaying) }
-
-    fun switchTrack(newIndex: Int){
-        if (newIndex in trackList.indices) {
-            activity.mediaPlayer.release()
-            activity.mediaPlayer = MediaPlayer.create(activity, trackList[newIndex])
-            activity.mediaPlayer.setOnCompletionListener {
-                switchTrack((currentTrackIndex + 1) % trackList.size)
-            }
-            activity.mediaPlayer.start()
-            isPlaying = true
-            currentTrackIndex = newIndex
-        }
-    }
-
-    Row(Modifier.padding(8.dp)) {
-        MusicSlider(mediaPlayer = activity.mediaPlayer, trackList)
+    Row(modifier = Modifier.padding(8.dp)) {
+        MusicSlider(viewModel)
     }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        Button(onClick = {
-            switchTrack((currentTrackIndex - 1 + trackList.size) % trackList.size)
-        }) {
+        Button(onClick = { viewModel.prev() }) {
             Text("⏮")
         }
 
-        Button(onClick = {
-            activity.toggleMusic()
-            isPlaying = activity.mediaPlayer.isPlaying
-        }) {
+        Button(onClick = { viewModel.togglePlay() }) {
             Text(if (isPlaying) "Pause" else "Play")
         }
 
-        Button(onClick = {
-            switchTrack((currentTrackIndex + 1) % trackList.size)
-        }) {
+        Button(onClick = { viewModel.next() }) {
             Text("⏭")
         }
     }
 }
 
 
+
 @Composable
-fun MyApp(activity: MainActivity, trackList: List<Int>) {
+fun MyApp(activity: MusicViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -147,41 +86,50 @@ fun MyApp(activity: MainActivity, trackList: List<Int>) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Greeting("HUESOS")
         Spacer(modifier = Modifier.height(16.dp))
-        MusicControls(activity, trackList)
+        MusicControls(activity)
     }
 }
 
 @Composable
-fun MusicSlider(mediaPlayer: MediaPlayer, trackList: List<Int>) {
-    var position by remember { mutableFloatStateOf(0f) }
-    var duration by remember { mutableFloatStateOf(1f) } // Избегаем деления на 0
-    var currentTrackIndex by remember { mutableFloatStateOf(0f) }
+fun MusicSlider(viewModel: MusicViewModel) {
+    val mediaPlayer by viewModel.mediaPlayer
 
-    LaunchedEffect(mediaPlayer) {
-        duration = try {
-            mediaPlayer.duration.toFloat().coerceAtLeast(1f)
-        } catch (e: Exception) {
-            1f
-        }
+    var position by remember { mutableFloatStateOf(0f) }
+    val duration = remember(mediaPlayer) {
+        mediaPlayer?.duration?.toFloat()?.coerceAtLeast(1f) ?: 1f
     }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            position = mediaPlayer.currentPosition.toFloat()
-            delay(1000) // Обновляем раз в секунду
+    LaunchedEffect(mediaPlayer) {
+        while (mediaPlayer != null) {
+            try {
+                position = mediaPlayer?.currentPosition?.toFloat() ?: 0f
+            } catch (e: IllegalStateException) {
+                // MediaPlayer говно ждем
+            }
+            delay(1000)
         }
     }
 
     Slider(
         value = position,
-        onValueChange = { newPosition ->
-            position = newPosition // UI обновляется сразу
-        },
+        onValueChange = { position = it },
         onValueChangeFinished = {
-            mediaPlayer.seekTo(position.toInt()) // Перематываем трек
+            try {
+                mediaPlayer?.seekTo(position.toInt())
+            } catch (e: IllegalStateException) {
+                // игнор если говно в плеере
+            }
         },
         valueRange = 0f..duration
     )
 }
+
+
+
+
+
+
+
+
+

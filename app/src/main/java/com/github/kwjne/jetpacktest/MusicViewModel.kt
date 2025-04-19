@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 
 class MusicViewModel(application: Application) : AndroidViewModel(application){
-    private var _mediaPlayer: MediaPlayer?= null
+    private val _mediaPlayer = mutableStateOf<MediaPlayer?>(null)
+    val mediaPlayer: State<MediaPlayer?> get() = _mediaPlayer
+
     private val context = application.applicationContext
 
     private val _isPlaying = mutableStateOf(false)
@@ -23,8 +25,8 @@ class MusicViewModel(application: Application) : AndroidViewModel(application){
     }
 
     private fun createPlayer(resId: Int) {
-        _mediaPlayer?.release()
-        _mediaPlayer = MediaPlayer.create(context, resId).apply {
+        _mediaPlayer.value?.release()
+        _mediaPlayer.value = MediaPlayer.create(context, resId).apply {
             setOnCompletionListener {
                 next()
             }
@@ -32,7 +34,7 @@ class MusicViewModel(application: Application) : AndroidViewModel(application){
     }
 
     fun togglePlay() {
-        _mediaPlayer?.let {
+        _mediaPlayer.value?.let {
             if (it.isPlaying) {
                 it.pause()
                 _isPlaying.value = false
@@ -46,21 +48,23 @@ class MusicViewModel(application: Application) : AndroidViewModel(application){
     fun next() {
         _currentTrackIndex.value = (_currentTrackIndex.value + 1) % trackList.size
         createPlayer(trackList[_currentTrackIndex.value])
-        _mediaPlayer?.start()
+        _mediaPlayer.value?.start()
         _isPlaying.value = true
     }
 
     fun prev(){
         _currentTrackIndex.value = (_currentTrackIndex.value - 1 + trackList.size) % trackList.size
         createPlayer(trackList[_currentTrackIndex.value])
-        _mediaPlayer?.start()
+        _mediaPlayer.value?.start()
         _isPlaying.value = true
     }
 
     override fun onCleared() {
-        _mediaPlayer?.release()
+        _mediaPlayer.value?.release()
         super.onCleared()
     }
+
+    fun getMediaPlayer(): MediaPlayer? = _mediaPlayer.value
 }
 
 // TODO подключить ViewModel, удалить старую логику, передать MusicControls из ViewModel
